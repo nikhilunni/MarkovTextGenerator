@@ -1,3 +1,5 @@
+import System.Environment
+import System.Exit
 import System.Random
 
 import Control.Monad
@@ -37,30 +39,34 @@ counts ((key,value):xs) = insertWith updateCounts key [(value,1)] rest
 
 totals :: HashMap String [(String,Int)] -> HashMap String Int
 totals = mapWithKey (\key counts -> foldl (\acc (_,n) -> acc+n) 0 counts)
-         
+
 percentages :: Fractional a => HashMap String [(String,Int)] -> HashMap String [(String,a)]
 percentages map1 = mapWithKey squash map1
   where totalsMap = totals map1
         squash key counts = map (\(val,freq) -> (val, fromIntegral freq / fromIntegral (totalsMap ! key))) counts
-        
 
-generateWords :: HashMap String [(String,Rational)] -> Int -> String -> IO [String]
-generateWords _ 0 _ = return []
-generateWords map count seed = do
+
+generateWords :: HashMap String [(String,Rational)] -> String -> IO ()
+generateWords map seed = do
   next <- fromList $ map ! seed
-  rest <- generateWords map (count-1) next
-  return $ next:rest
+  putStr $ next ++ " "
+  generateWords map next
 
 --K-gram model
 k :: Int
 k = 3
 
 main = do
-  no_punct <- filter (`notElem` ".?!-;\'\":,") <$> readFile "speeches.txt" --Remove punctuation from original text
-  let processed = words $ toLower <$> no_punct --Lowercase everything, and split into list of words
-  let transitions = percentages $ counts $ generateEdges processed k --Generate probabilities of going from one k-gram to another
-  seed <- uniform $ keys transitions --Generate the first k-gram randomly to seed the Markov generator
-  words <- generateWords transitions 100 seed --Generte 100 words given the seed and transition probabilities
-  print $ intercalate " " (seed:words) --Join together with spaces inbetween and print out
-  
-  
+  args <- getArgs
+  when (length args == 0) (die "Missing filename")
+  --Remove punctuation, lowercase, and split into list of words
+  processed <- words <$> ((fmap toLower) . filter (`notElem` ".?!-;\'\":,")) <$> readFile (args !! 0)
+
+  --Generate probabilities of going from one k-gram to another
+  let transitions = percentages $ counts $ generateEdges processed k
+
+  --Generate the first k-gram randomly to seed the Markov generator
+  seed <- uniform $ keys transitions
+
+ --Print words ad infinitum given the seed and transition probabilities
+  generateWords transitions seed
